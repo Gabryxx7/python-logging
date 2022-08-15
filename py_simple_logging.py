@@ -3,20 +3,68 @@ from datetime import datetime
 import colorama
 import os
 
+class LogColor():
+    def __init__(self, name, code, html):
+        self.color_name = name
+        self.color_code = code
+        self.color_html = html
+        
 class LogWidgetMeta:
-     def __init__(self):
-        self.logging_levels = {'a':0, 'd':1, 'i':2, 's':2, 'w':3, 'e':4}
+    log_levels = {'a':0, 'd':1, 'i':2, 's':2, 'w':3, 'e':4}
+    log_colors = {'red': LogColor('red', "\033[91m", "<font color=\"Red\">"),
+                    'green': LogColor('green', "\033[92m", "<font color=\"Green\">"),
+                    'white': LogColor('white', "\033[37m", "<font color=\"White\">"),
+                    'blue': LogColor('blue', "\033[94m", "<font color=\"Blue\">"),
+                    'orange': LogColor('orange', "\033[93m", "<font color=\"Orange\">"),
+                    'reset': LogColor('orange', "\033[0;0m", "</>")}
+    
+    def __init__(self):
+        self.min_log_level = 'a'
+        self.log_level = self.min_log_level
         self.tag = "LogWidgetMeta"
+        self.enabled = True
+    
+    def set_min_level(self, level):
+        self.i("LOGGER", f"{self.tag} Logging Level Changed: {self.min_level} - {str(self.logging_levels[self.min_level]}"))
+        self.min_level = level
+
+    def get_min_level_index(self):
+        return list(self.logging_levels.keys()).index(self.min_level)
+
+    def setEnabled(self, enabled):
+        self.i("LOGGER", f"Logging has been {self.status_string(enabled)}") 
+        self.enabled = enabled
+        
+    def status_string(self, status):
+        if status:
+            return "ENABLED"
+        else:
+            return  "DISABLED"
+    
+    def flush_lines(self):
+        pass
         
     def append(self, text):
-        pass
+        dateTimeObj = datetime.now()
+        timestampStr = dateTimeObj.strftime("%d-%b-%Y %H:%M:%S") + " - "
+        log_text = f"{self.log_level} [{self.tag}]: {text}"
+        return log_text
     
     def check_log_status(self, text):
         pass
     
     def on_logging_level_changed(self, new_logging_level):
         pass
+    
+
+class FileLogWidget(LogWidgetMeta):
+    def __init__(self, log_filename=None):
+        self.log_file = "log.txt" if log_filename is None else log_filename
+        self.file = open(self.log_file, "w+")
         
+class ConsoleLogWidget(LogWidgetMeta):
+    def __init__(self):
+        pass
 
 class QtLogWidget(LogWidgetMeta, QWidget):
     def __init__(self, logger):
@@ -60,8 +108,12 @@ class QtLogWidget(LogWidgetMeta, QWidget):
         self.check_log_status()
 
         self.setLayout(self.main_layout)
+        
+    def init(self):
+        self.logWidget = LogWidget(self)
 
     def append(self, text):
+        text = super().append(text)
         self.text_area.append(text)
         # self.text_area.moveCursor(QTextCursor.End)
         self.text_area.verticalScrollBar().setValue(self.text_area.verticalScrollBar().maximum())
@@ -140,15 +192,18 @@ class VisualLogWidget(LogWidgetMeta):
     def draw_circle(self, center, color, radius, thickness)):
         pass
     
-    def add_text_line(self, text_line, color, pos, font=None, font_size, line_height=None):
+    def append(self, text, color, pos, font=None, font_size, line_height=None, flush=False):
+        text = super().append(text)
         font = self.font if font is None else font
         font_size == self.font_size if font_size is None else font_size
         line_height = self.line_height if line_height is None else line_height
-        self.buffer.append(self.DebugTextLine(text_line, color, self.Point(pos.x, pos.y), font_size))
+        self.buffer.append(self.DebugTextLine(text, color, self.Point(pos.x, pos.y), font_size))
         pos.y += line_height
+        if flush:
+            self.flush_lines()
         return pos
     
-    def flush_text_lines(self, draw=True, canvas=None, debug=False):
+    def flush_lines(self, draw=True, canvas=None, debug=False):
         if debug:
             print(f"[{self.tag}] Flushing {len(self.buffer)} lines")
         while len(self.text_lines_buffer) > 0:
@@ -191,10 +246,6 @@ class PyGameLogWidget(VisualLogWidget):
         
     def draw_circle(self, center, color, radius, thickness):
         self.drawer.draw.circle(self.canvas, color=color, center=(int(center.x), int(center.y)), radius=radius, width=thickness)
-    
-class FileLogWidget:
-    def __init__(self, cls):
-        self._cls = cls
 
 
 class Singleton:
@@ -223,93 +274,53 @@ class LogColor():
 @Singleton
 class Log(object):
     def __init__(self):
-        self.logging_levels = {'a':0, 'd':1, 'i':2, 's':2, 'w':3, 'e':4}
-        self.min_level = 'a'
-        self.log_file = "log.txt"
-        self.file = open(self.log_file, "w+")
-        self.enabled = True
-        self.enable_console = True
-        self.enable_widget = True
-        self.save_to_file = True
-        self.logWidget = None
+        self.widgets = []
 
-        self.colors = {'red': LogColor('red', "\033[91m", "<font color=\"Red\">"),
-                       'green': LogColor('green', "\033[92m", "<font color=\"Green\">"),
-                       'white': LogColor('white', "\033[37m", "<font color=\"White\">"),
-                       'blue': LogColor('blue', "\033[94m", "<font color=\"Blue\">"),
-                       'orange': LogColor('orange', "\033[93m", "<font color=\"Orange\">"),
-                       'reset': LogColor('orange', "\033[0;0m", "</>")}
+    def w(self, tag, text, flush=False):
+        self.append("orange", tag, text, 'w', flush)
 
-    def set_min_level(self, level):
-        self.i("LOGGER", "Logging Level Changed: " + self.min_level + " - " + str(self.logging_levels[self.min_level]))
-        self.min_level = level
+    def d(self, tag, text, flush=False):
+        self.append("blue", tag, text, 'd', flush)
 
-    def get_min_level_index(self):
-        return list(self.logging_levels.keys()).index(self.min_level)
+    def e(self, tag, text, flush=False):
+        self.append("red", tag, text, 'e', flush)
 
-    def setEnabled(self, enabled):
-        self.i("LOGGER", "Logging has been " + self.status_string(enabled))
-        self.enabled = enabled
+    def s(self, tag, text, flush=False):
+        self.append("green", tag, text, 's', flush)
 
-    def setConsoleEnabled(self, enabled):
-        self.i("LOGGER", "Logging CONSOLE has been " + self.status_string(enabled))
-        self.enable_console = enabled
+    def i(self, tag, text, flush=False):
+        self.append("white", tag, text, 'i', flush)
 
-    def setWidgetEnabled(self, enabled):
-        self.i("LOGGER", "Logging WIDGET has been " + self.status_string(enabled))
-        self.enable_widget = enabled
-
-    def setFileEnabled(self, enabled):
-        self.i("LOGGER", "Logging FILE has been " + self.status_string(enabled)+": " + os.path.abspath(self.log_file))
-        self.save_to_file = enabled
-
-    def status_string(self, status):
-        if status:
-            return "ENABLED"
-        else:
-            return  "DISABLED"
-
-    def w(self, tag, text, log_to_widget=True):
-        self.print("orange", tag, text, 'w', log_to_widget)
-
-    def d(self, tag, text, log_to_widget=True):
-        self.print("blue", tag, text, 'd', log_to_widget)
-
-    def e(self, tag, text, log_to_widget=True):
-        self.print("red", tag, text, 'e', log_to_widget)
-
-    def s(self, tag, text, log_to_widget=True):
-        self.print("green", tag, text, 's', log_to_widget)
-
-    def i(self, tag, text, log_to_widget=True):
-        self.print("white", tag, text, 'i', log_to_widget)
-
-    def print(self, color_name, tag, text, log_level, log_to_widget=True):
-        if self.enabled:
-            color = self.colors[color_name]
-            color_reset = self.colors['reset']
-            if self.logging_levels[log_level] >= self.logging_levels[self.min_level]:
-                dateTimeObj = datetime.now()
-                timestampStr = dateTimeObj.strftime("%d-%b-%Y %H:%M:%S") + " - "
-                log_text = log_level + "["+str(tag)+"]: " +str(text)
-                if self.enable_widget and log_to_widget and self.logWidget is not None:
-                    try:
-                        final_text = timestampStr + color.color_html + " " + log_text + color_reset.color_html
-                        self.logWidget.append(final_text + "\n")
-                    except Exception as e:
-                        print("Exception writing to LOG Widget:" + str(e))
-                        pass
-                if self.enable_console:
-                    final_text = timestampStr + color.color_code + " " + log_text + color_reset.color_code
-                    print(final_text)
-                if self.save_to_file:
-                    try:
-                        self.file.write(timestampStr + log_text + "\n")
-                    except Exception as e:
-                        print("Exception writing to LOG File:" +str(e))
-                        pass
-    def create_log_widget(self):
-        self.logWidget = LogWidget(self)
-
+    def append(self, color_name, tag, text, log_level, flush=False):
+        for widget in self.widgets:
+            widget.append(flush=flush)
+        # if self.enabled:
+        #     color = self.colors[color_name]
+        #     color_reset = self.colors['reset']
+        #     if self.logging_levels[log_level] >= self.logging_levels[self.min_level]:
+        #         if self.enable_widget and log_to_widget and self.logWidget is not None:
+        #             try:
+        #                 final_text = timestampStr + color.color_html + " " + log_text + color_reset.color_html
+        #                 self.logWidget.append(final_text + "\n")
+        #             except Exception as e:
+        #                 print("Exception writing to LOG Widget:" + str(e))
+        #                 pass
+        #         if self.enable_console:
+        #             final_text = timestampStr + color.color_code + " " + log_text + color_reset.color_code
+        #             print(final_text)
+        #         if self.save_to_file:
+        #             try:
+        #                 self.file.write(timestampStr + log_text + "\n")
+        #             except Exception as e:
+        #                 print("Exception writing to LOG File:" +str(e))
+        #                 pass
+        
+    def flush(self):
+        for widget in self.widgets:
+            widget.flush()
+            
+    def init(self):
+        for widget in self.widgets:
+            widget.init()
 
 log = Log.Instance()
